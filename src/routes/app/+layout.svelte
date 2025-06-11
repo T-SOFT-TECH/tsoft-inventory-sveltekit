@@ -18,6 +18,7 @@
       <ul>
         <li><a href="/app/dashboard" class:active={$page.url.pathname === '/app/dashboard'}>Dashboard</a></li>
         <li><a href="/app/customers" class:active={$page.url.pathname.startsWith('/app/customers')}>Manage Customers</a></li>
+        <li><a href="/app/pos" class:active={$page.url.pathname.startsWith('/app/pos')}>New Sale / POS</a></li>
         <!-- Add other app-specific navigation links here -->
         {#if isAdmin}
           <li><hr class="nav-hr"><span class="nav-section-header">Admin</span></li>
