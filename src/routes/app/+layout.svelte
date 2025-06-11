@@ -17,11 +17,13 @@
       <h2 class="sidebar-title">Navigation</h2>
       <ul>
         <li><a href="/app/dashboard" class:active={$page.url.pathname === '/app/dashboard'}>Dashboard</a></li>
+        <li><a href="/app/customers" class:active={$page.url.pathname.startsWith('/app/customers')}>Manage Customers</a></li>
         <!-- Add other app-specific navigation links here -->
         {#if isAdmin}
           <li><hr class="nav-hr"><span class="nav-section-header">Admin</span></li>
           <li><a href="/app/admin/categories" class:active={$page.url.pathname.startsWith('/app/admin/categories')}>Categories</a></li>
           <li><a href="/app/admin/brands" class:active={$page.url.pathname.startsWith('/app/admin/brands')}>Brands</a></li>
+          <li><a href="/app/admin/products" class:active={$page.url.pathname.startsWith('/app/admin/products')}>Products</a></li>
           <!-- Add other admin section links here -->
         {/if}
       </ul>
