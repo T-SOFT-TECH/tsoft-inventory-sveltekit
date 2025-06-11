@@ -1,53 +1,63 @@
-<script>
-  /** @type {import('./$types').PageData} */
-  export let data; // Contains potentialParents from load function
+<script lang="ts">
+  import type { PageData, ActionData } from './$types';
 
-  /** @type {import('./$types').ActionData} */
-  export let form; // Contains data from form submission if it failed
+  // data contains potentialParents, form contains action data on failure
+  let { data, form }: { data: PageData, form?: ActionData } = $props();
 
-  // $: console.log('Form data:', form); // For debugging form state
+  // Use $state for mutable form field values, initialized from `form` (if action failed) or empty
+  let categoryName = $state(form?.name ?? '');
+  let categoryDescription = $state(form?.description ?? '');
+  let parentId = $state(form?.parent_id ?? '');
+
+  // Reactive message display for general errors or success messages not handled by specific field errors
+  let displayMessage = $derived(form?.message && !form.missingName && !form.duplicateName ? form.message : '');
+
 </script>
 
 <div class="container mx-auto p-4">
   <h1 class="text-2xl font-semibold mb-6">Create New Category</h1>
 
-  {#if form?.message && !form?.missingName}
-    <div class="mb-4 p-3 rounded"
-         class:bg-red-200={!form?.success} class:text-red-800={!form?.success}
-         class:bg-green-200={form?.success} class:text-green-800={form?.success}>
-      {form.message}
+  {#if displayMessage}
+    <div class="mb-4 p-3 rounded text-sm"
+         class:bg-red-100={!form?.message?.toLowerCase().includes("success")}
+         class:text-red-700={!form?.message?.toLowerCase().includes("success")}
+         class:bg-green-100={form?.message?.toLowerCase().includes("success")}
+         class:text-green-700={form?.message?.toLowerCase().includes("success")}>
+      {displayMessage}
     </div>
   {/if}
 
   <form method="POST" class="space-y-6 bg-white shadow-md rounded-lg p-8">
     <div>
       <label for="name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
-      <input type="text" name="name" id="name" value={form?.name ?? ''} required
-             class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm {form?.missingName ? 'border-red-500' : ''}" />
+      <input type="text" name="name" id="name" bind:value={categoryName} required
+             class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm {form?.missingName || form?.duplicateName ? 'border-red-500' : ''}" />
       {#if form?.missingName}
-        <p class="mt-2 text-sm text-red-600">{form.message}</p>
+        <p class="mt-2 text-sm text-red-600">{form.message || 'Category name is required.'}</p>
+      {:else if form?.duplicateName}
+        <p class="mt-2 text-sm text-red-600">{form.message || 'A category with this name already exists.'}</p>
       {/if}
     </div>
 
     <div>
       <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
-      <textarea name="description" id="description" rows="4"
-                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">{form?.description ?? ''}</textarea>
+      <textarea name="description" id="description" rows="4" bind:value={categoryDescription}
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
     </div>
 
     <div>
       <label for="parent_id" class="block text-sm font-medium text-gray-700">Parent Category (Optional)</label>
-      <select name="parent_id" id="parent_id"
+      <select name="parent_id" id="parent_id" bind:value={parentId}
               class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
         <option value="">-- None --</option>
         {#each data.potentialParents as category (category.id)}
-          <option value={category.id} selected={form?.parent_id === category.id.toString()}>{category.name} ({category.id})</option>
+          <option value={category.id}>{category.name} ({category.id})</option>
         {/each}
       </select>
     </div>
 
-    <div class="flex items-center justify-end space-x-3">
-      <a href="/app/admin/categories" class="text-gray-600 hover:text-gray-800 py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50">
+    <div class="flex items-center justify-end space-x-3 pt-4 border-t mt-6">
+      <a href="/app/admin/categories" role="button" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
         Cancel
       </a>
       <button type="submit"
@@ -58,55 +68,4 @@
   </form>
 </div>
 
-<!-- Re-using some Tailwind-like classes from the categories list page for consistency -->
-<style>
-  .container { max-width: 1280px; }
-  .mx-auto { margin-left: auto; margin-right: auto; }
-  .p-4 { padding: 1rem; }
-  .p-8 { padding: 2rem; }
-  .mb-6 { margin-bottom: 1.5rem; }
-  .mb-4 { margin-bottom: 1rem; }
-  .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.5rem; }
-  .text-2xl { font-size: 1.5rem; line-height: 2rem; }
-  .font-semibold { font-weight: 600; }
-  .block { display: block; }
-  .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-  .font-medium { font-weight: 500; }
-  .text-gray-700 { color: #374151; }
-  .text-red-500 { color: #EF4444; }
-  .mt-1 { margin-top: 0.25rem; }
-  .w-full { width: 100%; }
-  .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
-  .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-  .border { border-width: 1px; }
-  .border-gray-300 { border-color: #D1D5DB; }
-  .rounded-md { border-radius: 0.375rem; }
-  .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); }
-  .focus\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
-  .focus\:ring-indigo-500:focus { --tw-ring-color: #6366F1; box-shadow: 0 0 0 2px var(--tw-ring-color); } /* Simplified focus ring */
-  .focus\:border-indigo-500:focus { border-color: #6366F1; }
-  .border-red-500 { border-color: #EF4444; }
-  .mt-2 { margin-top: 0.5rem; }
-  .text-red-600 { color: #DC2626; }
-  .bg-white { background-color: #ffffff; }
-  .shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); }
-  .rounded-lg { border-radius: 0.5rem; }
-  .flex { display: flex; }
-  .items-center { align-items: center; }
-  .justify-end { justify-content: flex-end; }
-  .space-x-3 > :not([hidden]) ~ :not([hidden]) { margin-left: 0.75rem; }
-  .text-gray-600 { color: #4B5563; }
-  .hover\:text-gray-800:hover { color: #1F2937; }
-  .hover\:bg-gray-50:hover { background-color: #F9FAFB; }
-  .bg-blue-600 { background-color: #2563EB; }
-  .hover\:bg-blue-700:hover { background-color: #1D4ED8; }
-  .text-white { color: #ffffff; }
-  .focus\:ring-2:focus { /* Assuming some default ring width */ }
-  .focus\:ring-offset-2:focus { /* Assuming some default offset */ }
-  .focus\:ring-blue-500:focus { --tw-ring-color: #3B82F6; /* Ensure this matches indigo if that was intended */ }
-  .bg-red-200 { background-color: #FECACA; }
-  .text-red-800 { color: #991B1B; }
-  .bg-green-200 { background-color: #A7F3D0; }
-  .text-green-800 { color: #065F46; }
-
-</style>
+<!-- No <style> tags. Assuming Tailwind or global styles. -->

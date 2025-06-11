@@ -1,71 +1,74 @@
-<script>
-  /** @type {import('./$types').LayoutData} */
-  export let data; // Receives data from the +layout.server.js (e.g., user)
+<script lang="ts">
+  import type { LayoutData } from './$types';
+  import type { Snippet } from 'svelte';
+  import { page } from '$app/stores'; // For active link highlighting or breadcrumbs
+
+  let { data, children }: { data: LayoutData, children: Snippet } = $props();
+
+  // User is guaranteed to be an admin user here due to +layout.server.ts guard
+  // let adminUser = $derived(data.user);
 </script>
 
-<div class="admin-section-layout">
-  <header class="admin-header">
-    <h2>Admin Panel</h2>
+<div class="admin-layout p-4"> {/* Basic padding, assuming Tailwind utilities */}
+  <header class="admin-header mb-4 pb-2 border-b"> {/* Basic structure, Tailwind for styling */}
+    <h1 class="text-xl font-semibold">Admin Panel</h1>
     {#if data.user}
-      <span>Logged in as Admin: {data.user.email}</span>
+      <p class="text-sm text-gray-600">Logged in as Admin: <span class="font-medium">{data.user.email}</span></p>
     {/if}
   </header>
-  <hr />
 
-  <nav class="admin-nav">
-    <ul>
-      <li><a href="/app/admin/categories">Manage Categories</a></li>
-      <!-- Add other admin links here as needed -->
-      <li><a href="/app/dashboard">App Dashboard (User)</a></li>
+  <nav class="admin-main-nav mb-6">
+    <ul class="flex space-x-4">
+      <li><a href="/app/admin/categories" class:active={$page.url.pathname.startsWith('/app/admin/categories')} class="text-blue-600 hover:underline">Manage Categories</a></li>
+      <li><a href="/app/admin/brands" class:active={$page.url.pathname.startsWith('/app/admin/brands')} class="text-blue-600 hover:underline">Manage Brands</a></li>
+      <!-- More admin links can be added here -->
+      <li><a href="/app/dashboard" class="text-gray-700 hover:underline">User Dashboard</a></li>
     </ul>
   </nav>
 
-  <main class="admin-content">
-    <slot><!-- Admin pages will be rendered here --></slot>
+  <main class="admin-content-area">
+    {@render children()}
   </main>
-  <footer class="admin-footer">
-    <p>Admin section footer</p>
+
+  <footer class="admin-footer mt-8 pt-4 border-t text-center text-sm text-gray-500">
+    <p>Admin Section Footer</p>
   </footer>
 </div>
 
+<!--
+  No <style> tag here as per instruction, assuming Tailwind or global CSS handles styling.
+  The classes like "p-4", "mb-4", "text-xl" are examples of what would be Tailwind classes.
+  If specific non-utility styles were needed for .admin-layout, .admin-header etc.,
+  they would go into a <style> tag or a global CSS file.
+-->
+
+<!-- Example active class style (would typically be in a global CSS or handled by Tailwind's group features) -->
 <style>
-  .admin-section-layout {
-    border: 2px dashed blue;
-    padding: 1rem;
-    margin: 1rem 0;
+  nav a.active {
+    font-weight: bold;
+    /* text-decoration: underline; */ /* Or other active indication */
+    color: #1D4ED8; /* Darker blue for active example */
   }
-  .admin-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 0.5rem;
-  }
-  .admin-nav {
-    padding: 0.5rem 0;
-    margin-bottom: 1rem;
-    border-bottom: 1px solid #eee;
-  }
-  .admin-nav ul {
-    list-style-type: none;
-    padding: 0;
-    display: flex;
-    gap: 1rem;
-  }
-  .admin-nav a {
-    text-decoration: none;
-    color: #007bff; /* Example link color */
-  }
-  .admin-nav a:hover {
-    text-decoration: underline;
-  }
-  .admin-content {
-    padding: 1rem 0;
-  }
-  .admin-footer {
-    border-top: 1px solid #eee;
-    padding-top: 0.5rem;
-    margin-top: 1rem;
-    font-size: 0.9em;
-    color: #555;
-  }
+  /* Basic Tailwind-like placeholder classes for structure if not using full Tailwind in this snippet */
+  .p-4 { padding: 1rem; }
+  .mb-4 { margin-bottom: 1rem; }
+  .pb-2 { padding-bottom: 0.5rem; }
+  .border-b { border-bottom-width: 1px; border-color: #e5e7eb; } /* Example border */
+  .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+  .font-semibold { font-weight: 600; }
+  .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+  .text-gray-600 { color: #4b5563; }
+  .font-medium { font-weight: 500; }
+  .mb-6 { margin-bottom: 1.5rem; }
+  .flex { display: flex; }
+  .space-x-4 > :not([hidden]) ~ :not([hidden]) { margin-left: 1rem; }
+  .text-blue-600 { color: #2563eb; }
+  .hover\:underline:hover { text-decoration: underline; }
+  .text-gray-700 { color: #374151; }
+  .mt-8 { margin-top: 2rem; }
+  .pt-4 { padding-top: 1rem; }
+  .border-t { border-top-width: 1px; }
+  .text-center { text-align: center; }
+  .text-gray-500 { color: #6b7280; }
+
 </style>
