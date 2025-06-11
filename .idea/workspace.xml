@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c99dccdf-b606-47cb-b17d-901c5a6d8a60" name="Changes" comment="" />
+    <list default="true" id="c99dccdf-b606-47cb-b17d-901c5a6d8a60" name="Changes" comment="My first Commit">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -13,6 +15,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "T-SOFT-TECH"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/T-SOFT-TECH/tsoft-inventory-sveltekit",
+    "accountId": "2956bc2a-0fde-41bf-b0c4-09b1f83651a8"
+  }
+}]]></component>
   <component name="ProjectColorInfo">{
   &quot;customColor&quot;: &quot;&quot;,
   &quot;associatedIndex&quot;: 5
@@ -55,8 +69,17 @@
       <updated>1749598292637</updated>
       <workItem from="1749598296212" duration="480000" />
       <workItem from="1749599755166" duration="540000" />
-      <workItem from="1749600396105" duration="693000" />
+      <workItem from="1749600396105" duration="1845000" />
     </task>
+    <task id="LOCAL-00001" summary="My first Commit">
+      <option name="closed" value="true" />
+      <created>1749601457879</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1749601457879</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -66,5 +89,9 @@
         <option value="$PROJECT_DIR$/supabase=tsoft-inventory-sveltekit/packages/ai-commands/test/extensions.d.ts" />
       </list>
     </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="My first Commit" />
+    <option name="LAST_COMMIT_MESSAGE" value="My first Commit" />
   </component>
 </project>
