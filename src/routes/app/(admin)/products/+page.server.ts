@@ -15,6 +15,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       updated_at,
       category_id,
       brand_id,
+      specifications, // Added specifications column
       categories ( name ),
       brands ( name )
     `)

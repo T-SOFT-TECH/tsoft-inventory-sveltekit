@@ -61,6 +61,7 @@
             <th scope="col" class="px-6 py-3">Brand</th>
             <th scope="col" class="px-6 py-3 text-right">Price</th>
             <th scope="col" class="px-6 py-3 text-right">Stock</th>
+            <th scope="col" class="px-6 py-3">Specifications</th>
             <th scope="col" class="px-6 py-3">Actions</th>
           </tr>
         </thead>
@@ -73,6 +74,13 @@
               <td class="px-6 py-4">{product.brands?.name ?? 'N/A'}</td>
               <td class="px-6 py-4 text-right">{product.selling_price != null ? product.selling_price.toFixed(2) : 'N/A'}</td>
               <td class="px-6 py-4 text-right">{product.current_stock ?? 'N/A'}</td>
+              <td class="px-6 py-4 text-xs">
+                {#if product.specifications && Object.keys(product.specifications).length > 0}
+                  <pre class="whitespace-pre-wrap bg-gray-50 p-1 rounded">{JSON.stringify(product.specifications, null, 2)}</pre>
+                {:else}
+                  N/A
+                {/if}
+              </td>
               <td class="px-6 py-4 flex space-x-2 justify-end">
                 <a href={`/app/admin/products/${product.id}/edit`} role="button" class="text-blue-600 hover:text-blue-800 font-medium">Edit</a>
                 <form method="POST" action="?/delete&id={product.id}" use:enhance={() => {

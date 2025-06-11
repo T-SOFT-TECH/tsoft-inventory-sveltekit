@@ -12,14 +12,14 @@ const requiredUUID = z.string().uuid({ message: "selection is required" });
 const productSchema = z.object({
   name: requiredString,
   sku: requiredString,
-  description: optionalString,
+  description: optionalString.nullable(), // Allow null
   category_id: requiredUUID,
   brand_id: requiredUUID,
-  purchase_price: optionalNumber,
+  purchase_price: optionalNumber.nullable(), // Allow null
   selling_price: requiredNumber,
   current_stock: z.number().int().min(0, { message: "must be a non-negative integer" }),
-  image_urls: optionalString, // Will be parsed from comma-separated string
-  specifications: optionalString, // Will be parsed from JSON string
+  image_urls_str: optionalString.nullable(), // Renamed to avoid conflict, will be parsed
+  // `specifications` is no longer a single string field from the form for Zod, it's built dynamically
 });
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -48,60 +48,108 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   default: async ({ request, locals }) => {
     const formData = await request.formData();
-    const fields = Object.fromEntries(formData.entries());
+    const rawFormFields = Object.fromEntries(formData.entries());
 
-    // Prepare for Zod (numbers need to be parsed)
-    const dataToValidate = {
-      ...fields,
-      purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price as string) : undefined,
-      selling_price: fields.selling_price ? parseFloat(fields.selling_price as string) : undefined,
-      current_stock: fields.current_stock ? parseInt(fields.current_stock as string, 10) : undefined,
+    // Fetch category specification definitions for validation
+    const categoryId = rawFormFields.category_id as string;
+    let categorySpecDefinitions: { field_name: string; field_label: string; field_type: string; is_required: boolean }[] = [];
+    if (categoryId) {
+        const { data: specs, error: specError } = await locals.supabase
+            .from('category_specification_fields')
+            .select('field_name, field_label, field_type, is_required')
+            .eq('category_id', categoryId);
+        if (specError) {
+            return fail(500, { fields: rawFormFields, message: `Error fetching category specifications for validation: ${specError.message}` });
+        }
+        categorySpecDefinitions = specs ?? [];
+    }
+
+    // Prepare fixed fields for Zod validation
+    const fixedFieldsToValidate = {
+      name: rawFormFields.name,
+      sku: rawFormFields.sku,
+      description: rawFormFields.description,
+      category_id: rawFormFields.category_id,
+      brand_id: rawFormFields.brand_id,
+      purchase_price: rawFormFields.purchase_price ? parseFloat(rawFormFields.purchase_price as string) : null,
+      selling_price: rawFormFields.selling_price ? parseFloat(rawFormFields.selling_price as string) : undefined, // undefined if empty for required check
+      current_stock: rawFormFields.current_stock ? parseInt(rawFormFields.current_stock as string, 10) : undefined,
+      image_urls_str: rawFormFields.image_urls, // Keep as string for Zod, parse later
     };
 
-    const validationResult = productSchema.safeParse(dataToValidate);
+    const validationResult = productSchema.safeParse(fixedFieldsToValidate);
+    let allErrors: Record<string, string[]> = {};
 
     if (!validationResult.success) {
-      const errors = validationResult.error.flatten().fieldErrors;
-      return fail(400, {
-        fields, // Send back original string fields
-        errors,
-        message: 'Validation failed. Please check the errors.',
-      });
+      allErrors = validationResult.error.flatten().fieldErrors;
     }
 
-    const validatedData = validationResult.data;
+    const validatedFixedData = validationResult.success ? validationResult.data : null;
+
+    // Collect and validate dynamic specification values
+    let dynamicSpecifications: Record<string, any> = {};
+    for (const [key, value] of formData.entries()) {
+        if (key.startsWith('spec_')) {
+            const fieldName = key.substring(5);
+            const specDef = categorySpecDefinitions.find(def => def.field_name === fieldName);
+
+            if (specDef) {
+                let parsedValue: any = value;
+                if (specDef.field_type === 'checkbox') {
+                    parsedValue = value === 'on' || value === 'true' || value === true;
+                } else if (specDef.field_type === 'number') {
+                    const numVal = parseFloat(value as string);
+                    if (value && isNaN(numVal)) { // Check if value exists and is not a valid number
+                        allErrors[key] = [`${specDef.field_label} must be a valid number.`];
+                    }
+                    parsedValue = !value && value !== '0' ? null : (isNaN(numVal) ? null : numVal); // store null if empty or invalid, else number
+                } else if (specDef.field_type === 'boolean') { // Example for a true/false select or radio
+                    parsedValue = value === 'true' ? true : (value === 'false' ? false : null);
+                } else {
+                     parsedValue = (value as string)?.trim() || null;
+                }
+                dynamicSpecifications[fieldName] = parsedValue;
+
+                if (specDef.is_required && (parsedValue === null || parsedValue === '' || parsedValue === false)) {
+                    allErrors[key] = [`${specDef.field_label} is required.`];
+                }
+            }
+        }
+    }
+
+    if (Object.keys(allErrors).length > 0) {
+        return fail(400, {
+            fields: rawFormFields, // Send back original string fields for repopulation
+            errors: allErrors,
+            message: 'Validation failed. Please check all fields, including category-specific ones.',
+        });
+    }
+
+    // This block assumes validatedFixedData is not null because Object.keys(allErrors).length === 0
+    // If Zod failed but dynamic spec errors also exist, validatedFixedData would be null.
+    // A more robust check: if (!validatedFixedData) return fail(...) for fixed field errors first.
+    if (!validatedFixedData) {
+         return fail(400, { fields: rawFormFields, errors: allErrors, message: 'Validation failed on core product fields.' });
+    }
 
     let imageUrlsArray: string[] | null = null;
-    if (validatedData.image_urls) {
-      imageUrlsArray = validatedData.image_urls.split(',').map(url => url.trim()).filter(url => url);
-      if (imageUrlsArray.length === 0) imageUrlsArray = null; // Ensure empty becomes null
-    }
-
-    let specificationsObject: Record<string, any> | null = null;
-    if (validatedData.specifications) {
-      try {
-        specificationsObject = JSON.parse(validatedData.specifications);
-      } catch (e) {
-        return fail(400, {
-          fields,
-          errors: { specifications: ['Invalid JSON format.'] },
-          message: 'Specifications field contains invalid JSON.',
-        });
-      }
+    if (validatedFixedData.image_urls_str) {
+      imageUrlsArray = validatedFixedData.image_urls_str.split(',').map(url => url.trim()).filter(url => url);
+      if (imageUrlsArray.length === 0) imageUrlsArray = null;
     }
 
     const productDataForDb = {
-      name: validatedData.name,
-      sku: validatedData.sku,
-      description: validatedData.description || null,
-      category_id: validatedData.category_id,
-      brand_id: validatedData.brand_id,
-      purchase_price: validatedData.purchase_price, // Already a number or undefined
-      selling_price: validatedData.selling_price, // Already a number
-      current_stock: validatedData.current_stock, // Already a number
+      name: validatedFixedData.name,
+      sku: validatedFixedData.sku,
+      description: validatedFixedData.description || null,
+      category_id: validatedFixedData.category_id,
+      brand_id: validatedFixedData.brand_id,
+      purchase_price: validatedFixedData.purchase_price,
+      selling_price: validatedFixedData.selling_price,
+      current_stock: validatedFixedData.current_stock,
       image_urls: imageUrlsArray,
-      specifications: specificationsObject,
-      // user_id: locals.user?.id, // If tracking creator
+      specifications: dynamicSpecifications, // Add collected dynamic specifications
+      // user_id: locals.user?.id,
     };
 
     // --- Database Operations ---
