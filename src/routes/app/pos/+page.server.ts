@@ -209,19 +209,73 @@ export const actions: Actions = {
     }
 
     // (Placeholder) Payment Gateway Interaction
-    if (paymentMethod !== 'cash') {
+    if (paymentMethod && paymentMethod !== 'cash') { // Ensure paymentMethod is not null before comparison
       // TODO: Implement payment gateway logic if needed.
-      // If payment fails, the sale status might need to be updated to 'payment_failed'.
-      // This adds more complexity and underscores the need for transactions.
     }
 
-    // Success
-    // Redirect to a sales confirmation page or back to POS with a success message.
-    // For now, redirecting back to POS. A dedicated sales detail/confirmation page would be better.
-    throw redirect(303, `/app/pos?message=Sale (ID: ${saleRecord.id}) processed successfully!`);
-    // Or to a sales detail page:
-    // throw redirect(303, `/app/sales/${saleRecord.id}?message=Sale processed successfully`);
-    // Or, more likely, a redirect:
-    // throw redirect(303, `/app/sales/${newSaleId}?message=Sale successful`);
+    // --- Invoice Generation ---
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const invoiceNumber = `INV-${year}${month}${day}-${randomSuffix}`;
+
+    let customerDetailsSnapshot = null;
+    if (customerId) { // customerId is selectedCustomerId from formData
+        const { data: customer, error: custError } = await locals.supabase
+            .from('customers')
+            .select('name, email, phone, address_line1, address_line2, city, postal_code, country')
+            .eq('id', customerId)
+            .single();
+        if (custError) {
+            console.error(`Error fetching customer ${customerId} for invoice snapshot: ${custError.message}`);
+            // Non-fatal for invoice, but log it. Invoice will have null customer details.
+        } else if (customer) {
+            customerDetailsSnapshot = customer;
+        }
+    }
+
+    const companyDetailsSnapshot = { // Placeholder
+        name: "T-Soft Inventory Solutions (Placeholder)",
+        address: "42 Business Rd, Commerce City, Placeholder Country",
+        phone: "+1-555-0100",
+        email: "sales@tsoft-inventory.example.com",
+        // Future: Load from a 'company_profiles' or 'settings' table
+    };
+
+    const invoiceStatus = (paymentMethod === 'cash' || paymentMethod === 'card') ? 'paid' : 'unpaid';
+
+    const invoiceData = {
+        sale_id: saleRecord.id,
+        invoice_number: invoiceNumber,
+        issue_date: now.toISOString().split('T')[0], // YYYY-MM-DD
+        // due_date: calculate if applicable (e.g., issue_date + 30 days for 'unpaid' status)
+        status: invoiceStatus,
+        company_details_snapshot: companyDetailsSnapshot,
+        customer_details_snapshot: customerDetailsSnapshot,
+        // pdf_url will be set later
+    };
+
+    const { data: newInvoice, error: invoiceError } = await locals.supabase
+        .from('invoices')
+        .insert(invoiceData)
+        .select('id')
+        .single();
+
+    if (invoiceError) {
+        console.error(`FATAL: Sale ${saleRecord.id} processed, stock updated, but INVOICE CREATION FAILED: ${invoiceError.message}`);
+        // Redirect with a strong warning that the sale is complete but invoice failed.
+        throw redirect(303, `/app/pos?warning=SaleProcessedInvoiceFailed&saleId=${saleRecord.id}&message=Sale recorded (ID: ${saleRecord.id}), but invoice generation failed. Please contact support.`);
+    }
+
+    // Success: Redirect to the new invoice page (assuming one exists or will be created)
+    if (newInvoice) {
+        throw redirect(303, `/app/invoices/${newInvoice.id}?message=Sale processed and invoice ${invoiceNumber} created successfully!`);
+    } else {
+        // Fallback if newInvoice somehow wasn't returned but no DB error (should not happen with .single() and error check)
+        console.error(`Sale ${saleRecord.id} processed and invoice supposedly created, but no invoice ID returned.`);
+        throw redirect(303, `/app/pos?message=Sale (ID: ${saleRecord.id}) processed successfully, invoice created but ID retrieval failed.`);
+    }
   },
 };
