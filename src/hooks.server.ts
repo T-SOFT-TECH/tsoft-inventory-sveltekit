@@ -34,7 +34,32 @@ export const handle: Handle = async ({ event, resolve }) => {
   } = await event.locals.supabase.auth.getSession();
 
   event.locals.session = session;
-  event.locals.user = session?.user ?? null;
+  event.locals.user = session?.user ?? null; // `user` is now of the extended User type from app.d.ts
+
+  // If user is authenticated, fetch their profile information
+  if (event.locals.user) {
+    const { data: profile, error: profileError } = await event.locals.supabase
+      .from('profiles')
+      .select('username, full_name, avatar_url') // Select specific fields defined in Profile interface
+      .eq('id', event.locals.user.id)
+      .single();
+
+    if (profileError) {
+      // Log the error but don't fail the request.
+      // The user can still operate without these extra profile details.
+      // A missing profile might be normal for new users if profile creation is a separate step.
+      console.error(`Error fetching profile for user ${event.locals.user.id}: ${profileError.message}`);
+      // Ensure event.locals.user.profile is explicitly null if not found or error
+      event.locals.user.profile = null;
+    } else {
+      // Attach the fetched profile to the user object in event.locals.
+      // The 'as any' might be needed if TypeScript compiler struggles with adding
+      // a new property to an imported type directly, though our extended User type should handle this.
+      // event.locals.user = { ...event.locals.user, profile: profile ?? null };
+      // More directly, if App.User is correctly augmented:
+      event.locals.user.profile = profile ?? null;
+    }
+  }
 
   // Resolve the request, applying Supabase-specific response header filtering.
   // This is crucial for the auth helpers to manage session cookies correctly,

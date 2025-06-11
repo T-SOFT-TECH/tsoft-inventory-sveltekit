@@ -7,8 +7,10 @@
 
   let user = $derived(data.user);
   let isAdmin = $derived(data.isAdmin);
+  let profile = $derived(user?.profile); // Access the profile from the user object
 
-  // $: console.log('App layout data:', data);
+  // $: console.log('App layout data user:', user);
+  // $: console.log('App layout data profile:', profile);
 </script>
 
 <div class="app-layout-container">
@@ -33,9 +35,31 @@
   </aside>
 
   <div class="app-main-content-area">
-    <header class="app-header-bar">
-      <p>Welcome to the App Area, {user?.email}</p>
-      <!-- Breadcrumbs or other header content could go here -->
+    <header class="app-header-bar flex justify-between items-center"> {/* Added flex for alignment */}
+      <div> {/* Grouping for welcome message and user details */}
+        {#if user}
+          <div class="flex items-center">
+            {#if profile?.avatar_url}
+              <img src={profile.avatar_url} alt="{profile.username ?? user.email}'s avatar" class="w-10 h-10 rounded-full object-cover mr-3 border" />
+            {:else}
+              <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white font-bold text-lg mr-3 border">
+                {(profile?.username || profile?.full_name || user.email || 'U').substring(0, 1).toUpperCase()}
+              </div>
+            {/if}
+            <div>
+              <p class="text-sm font-medium text-gray-700">
+                Welcome, {profile?.full_name || profile?.username || user.email}!
+              </p>
+              <p class="text-xs text-gray-500">Logged into App Area</p>
+            </div>
+          </div>
+        {:else}
+           <p>Welcome to the App Area</p>
+        {/if}
+      </div>
+      <div>
+         <!-- Other header content like global actions or search could go here -->
+      </div>
     </header>
     <hr class="header-divider"/>
     <div class="page-content-wrapper">
@@ -109,9 +133,12 @@
   }
 
   .app-header-bar {
-    padding: 1rem;
+    padding: 0.75rem 1.5rem; /* Adjusted padding */
     background-color: #ffffff;
-    /* box-shadow: 0 2px 4px rgba(0,0,0,0.05); */ /* Optional header shadow */
+    /* box-shadow: 0 1px 3px rgba(0,0,0,0.1); */ /* Softer shadow if needed */
+  }
+  .app-header-bar img.border { /* Add a subtle border to avatar */
+    border-color: #e2e8f0; /* Tailwind gray-300 */
   }
 
   .header-divider {

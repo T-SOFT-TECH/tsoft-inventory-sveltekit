@@ -7,6 +7,7 @@
   let { data, children }: { data: LayoutData, children: Snippet } = $props();
 
   let user = $derived(data.user);
+  let profile = $derived(user?.profile); // Access profile from the user object
   // let session = $derived(data.session); // If session data is needed directly
 
   // For displaying messages from redirects (e.g., after logout)
@@ -35,9 +36,18 @@
         <li><a href="/">Home</a></li>
         {#if user}
           <li><a href="/app/dashboard">Dashboard</a></li>
-          <li><span>Welcome, {user.email}</span></li>
+          <li class="flex items-center">
+            {#if profile?.avatar_url}
+                <img src={profile.avatar_url} alt="User avatar" class="w-8 h-8 rounded-full object-cover mr-2 border border-gray-600" />
+            {:else}
+                <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white text-sm font-semibold mr-2 border border-gray-600">
+                    {(profile?.username || profile?.full_name || user.email || 'U').substring(0, 1).toUpperCase()}
+                </div>
+            {/if}
+            <span>Welcome, {profile?.full_name || profile?.username || user.email}</span>
+          </li>
           <li>
-            <form method="POST" action="/auth/login?/logout" use:enhance>
+            <form method="POST" action="/auth/login?/logout" use:enhance class="inline">
               <button type="submit" class="logout-button">Logout</button>
             </form>
           </li>
@@ -101,7 +111,11 @@
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 1rem; /* Applied to ul, li will get spacing */
+  }
+  .main-nav li { /* Ensure li itself is a flex item if it contains multiple sub-items like avatar+span */
+    display: flex;
+    align-items: center;
   }
   .main-nav a, .main-nav span, .logout-button {
     color: white;
@@ -113,9 +127,14 @@
   .logout-button {
     background: none;
     border: none;
-    padding: 0;
+    padding: 0; /* Reset padding */
+    margin: 0; /* Reset margin */
     font: inherit;
     cursor: pointer;
+    display: inline; /* Make it behave like text for alignment */
+  }
+  .main-nav form.inline { /* Ensure form doesn't add extra block layout */
+    display: inline;
   }
   .message-banner {
     padding: 1rem;
