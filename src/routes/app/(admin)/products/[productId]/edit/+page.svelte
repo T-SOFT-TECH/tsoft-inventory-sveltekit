@@ -15,10 +15,17 @@
   let purchasePrice = $state(form?.fields?.purchase_price ?? data.product.purchase_price ?? '');
   let sellingPrice = $state(form?.fields?.selling_price ?? data.product.selling_price);
   let currentStock = $state(form?.fields?.current_stock ?? data.product.current_stock ?? '0');
-  let imageUrlsStr = $state(form?.fields?.image_urls ?? (Array.isArray(data.product.image_urls) ? data.product.image_urls.join(', ') : ''));
+  // imageUrlsStr is removed, replaced by new file handling logic
+
+  let newImageFiles = $state<File[]>([]);
+  let newImagePreviews = $state<string[]>([]); // Object URLs for new previews
+  let existingImageUrls = $state<string[]>(form?.fields?.existing_image_urls ? JSON.parse(form.fields.existing_image_urls as string) : (data.product.image_urls || []));
+  let imagesToDelete = $state<string[]>(form?.fields?.images_to_delete_json ? JSON.parse(form.fields.images_to_delete_json as string) : []);
+
+
   // The main `specifications` field (general JSON) is not explicitly bound here if we are fully replacing it with dynamic fields.
   // If it's meant to co-exist, it needs its own $state and input. For now, assuming dynamic fields replace it.
-  // let generalSpecificationsStr = $state(form?.fields?.specifications ?? (typeof data.product.specifications === 'object' && data.product.specifications !== null && !Object.keys(data.product.specifications).some(k => k.startsWith('spec_')) ? JSON.stringify(data.product.specifications, null, 2) : ''));
+  // let generalSpecificationsStr = $state(form?.fields?.specifications_str ?? (typeof data.product.specifications === 'object' && data.product.specifications !== null && !Object.keys(data.product.specifications).some(k => k.startsWith('spec_')) ? JSON.stringify(data.product.specifications, null, 2) : ''));
 
 
   // State for dynamic category-specific fields
@@ -109,9 +116,67 @@
   // Derived error messages
   let nameError = $derived(form?.errors?.name?.[0] ?? '');
   let skuError = $derived(form?.errors?.sku?.[0] ?? '');
+  let newProductImagesError = $derived(form?.errors?.new_product_images?.[0] ?? '');
   // ... other fixed field errors
 
   let displayMessage = $derived(form?.message ?? (new URL($page.url).searchParams.get('message') || ''));
+
+$effect(() => {
+    // Cleanup for newImagePreviews object URLs
+    const previews = newImagePreviews;
+    return () => {
+        for (const url of previews) {
+            URL.revokeObjectURL(url);
+        }
+    };
+});
+
+function handleNewProductImagesSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    for (const url of newImagePreviews) { // Revoke previous new previews
+        URL.revokeObjectURL(url);
+    }
+    if (input.files) {
+        newImageFiles = Array.from(input.files);
+        newImagePreviews = newImageFiles.map(file => URL.createObjectURL(file));
+    } else {
+        newImageFiles = [];
+        newImagePreviews = [];
+    }
+}
+
+function removeNewSelectedImage(index: number) {
+    URL.revokeObjectURL(newImagePreviews[index]);
+    newImageFiles = newImageFiles.filter((_, i) => i !== index);
+    newImagePreviews = newImagePreviews.filter((_, i) => i !== index);
+    const fileInput = document.getElementById('new_product_images') as HTMLInputElement | null;
+    if (fileInput && newImageFiles.length === 0) {
+        fileInput.value = '';
+    }
+}
+
+function toggleDeleteExistingImage(url: string) {
+    if (imagesToDelete.includes(url)) {
+        imagesToDelete = imagesToDelete.filter(u => u !== url);
+    } else {
+        imagesToDelete = [...imagesToDelete, url];
+    }
+}
+
+$effect(() => {
+    // When form data is returned from server (e.g. validation error),
+    // ensure existingImageUrls and imagesToDelete are re-populated correctly if they were part of 'fields'
+    if (form?.fields?.existing_image_urls) {
+        try {
+            existingImageUrls = JSON.parse(form.fields.existing_image_urls as string);
+        } catch (e) { console.error("Error parsing existing_image_urls from form data", e); }
+    }
+    if (form?.fields?.images_to_delete_json) {
+         try {
+            imagesToDelete = JSON.parse(form.fields.images_to_delete_json as string);
+        } catch (e) { console.error("Error parsing images_to_delete_json from form data", e); }
+    }
+});
 
 </script>
 
@@ -182,10 +247,70 @@
         {#if form?.errors?.current_stock}<p class="mt-1 text-xs text-red-600">{form.errors.current_stock[0]}</p>{/if}
       </div>
     </div>
-    <div>
-      <label for="image_urls_str" class="block text-sm font-medium">Image URLs (comma-separated)</label> <!-- Name matches Zod schema -->
-      <textarea name="image_urls_str" id="image_urls_str" rows="2" bind:value={imageUrlsStr} placeholder="https://ex.com/img1.jpg, https://ex.com/img2.png" class="input mt-1 block w-full"></textarea>
+
+    {!-- Existing Images Management --}
+    <div class="mt-4">
+      <h3 class="block text-sm font-medium text-gray-700 mb-1">Current Images</h3>
+      {#if existingImageUrls.length > 0}
+        <div class="flex flex-wrap gap-3 mt-2 p-2 border rounded-md bg-gray-50">
+          {#each existingImageUrls as imageUrl (imageUrl)}
+            <div class="relative w-24 h-24">
+              <img src={imageUrl} alt="Existing product image" class="w-full h-full object-cover rounded shadow" />
+              <button
+                  type="button"
+                  onclick={() => toggleDeleteExistingImage(imageUrl)}
+                  class="absolute -top-2 -right-2 border rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow transition-colors"
+                  class:bg-red-500={imagesToDelete.includes(imageUrl)}
+                  class:text-white={imagesToDelete.includes(imageUrl)}
+                  class:bg-white={!imagesToDelete.includes(imageUrl)}
+                  class:text-gray-700={!imagesToDelete.includes(imageUrl)}
+                  title={imagesToDelete.includes(imageUrl) ? 'Undo Mark for Deletion' : 'Mark for Deletion'}
+              >
+                {imagesToDelete.includes(imageUrl) ? '↩' : 'X'}
+              </button>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-xs text-gray-500 mt-1">No existing images.</p>
+      {/if}
+      <!-- Hidden input to submit URLs to delete -->
+      <input type="hidden" name="images_to_delete_json" value={JSON.stringify(imagesToDelete)} />
+      <!-- Hidden input to submit current list of existing images (for server to diff if files are added and old ones kept) -->
+      <input type="hidden" name="existing_image_urls" value={JSON.stringify(existingImageUrls.filter(url => !imagesToDelete.includes(url)))} />
+
     </div>
+
+    {!-- Add New Images Section --}
+    <div class="mt-4">
+      <label for="new_product_images" class="block text-sm font-medium text-gray-700">Add New Images (Select multiple)</label>
+      <input
+          type="file"
+          name="new_product_images"
+          id="new_product_images"
+          multiple
+          accept="image/png, image/jpeg, image/gif, image/webp"
+          onchange={handleNewProductImagesSelect}
+          class="input mt-1 block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 {newProductImagesError ? 'input-error' : ''}"
+      />
+      {#if newProductImagesError}<p class="mt-1 text-xs text-red-600">{newProductImagesError}</p>{/if}
+    </div>
+
+    {#if newImagePreviews.length > 0}
+      <div class="flex flex-wrap gap-2 mt-2 p-2 border rounded-md bg-gray-50">
+        <p class="w-full text-xs text-gray-600 mb-1">New images preview (will be added):</p>
+        {#each newImagePreviews as previewUrl, index (previewUrl)}
+          <div class="relative w-24 h-24">
+            <img src={previewUrl} alt={`New product image preview ${index + 1}`} class="w-full h-full object-cover rounded shadow" />
+            <button type="button" onclick={() => removeNewSelectedImage(index)}
+                    class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow hover:bg-red-700 transition-colors">
+              &times;
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
 
     {!-- Dynamic Category-Specific Fields --}
     {#if currentCategorySpecFields.length > 0}

@@ -15,11 +15,15 @@ const productSchema = z.object({
   description: optionalString.nullable(), // Allow null
   category_id: requiredUUID,
   brand_id: requiredUUID,
-  purchase_price: optionalNumber.nullable(), // Allow null
+  purchase_price: optionalNumber.nullable(),
   selling_price: requiredNumber,
   current_stock: z.number().int().min(0, { message: "must be a non-negative integer" }),
-  image_urls_str: optionalString.nullable(), // Renamed to avoid conflict, will be parsed
-  // `specifications` is no longer a single string field from the form for Zod, it's built dynamically
+  product_images: z.array(z.instanceof(File)
+    .refine(file => file.size > 0, { message: 'Empty file detected. Please select valid images.' })
+    .refine(file => file.size < 2 * 1024 * 1024, { message: `File ${file.name} too large. Max 2MB per image.` })
+    .refine(file => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type), { message: `File ${file.name} has an invalid type. Only JPG, PNG, GIF, WEBP allowed.` })
+  ).optional().default([]), // Default to empty array if no files
+  // `specifications` is dynamically built
 });
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -72,9 +76,10 @@ export const actions: Actions = {
       category_id: rawFormFields.category_id,
       brand_id: rawFormFields.brand_id,
       purchase_price: rawFormFields.purchase_price ? parseFloat(rawFormFields.purchase_price as string) : null,
-      selling_price: rawFormFields.selling_price ? parseFloat(rawFormFields.selling_price as string) : undefined, // undefined if empty for required check
+      selling_price: rawFormFields.selling_price ? parseFloat(rawFormFields.selling_price as string) : undefined,
       current_stock: rawFormFields.current_stock ? parseInt(rawFormFields.current_stock as string, 10) : undefined,
-      image_urls_str: rawFormFields.image_urls, // Keep as string for Zod, parse later
+      // Pass File objects directly to Zod
+      product_images: formData.getAll('product_images').filter(f => (f as File).size > 0) as File[],
     };
 
     const validationResult = productSchema.safeParse(fixedFieldsToValidate);
@@ -132,10 +137,46 @@ export const actions: Actions = {
          return fail(400, { fields: rawFormFields, errors: allErrors, message: 'Validation failed on core product fields.' });
     }
 
-    let imageUrlsArray: string[] | null = null;
-    if (validatedFixedData.image_urls_str) {
-      imageUrlsArray = validatedFixedData.image_urls_str.split(',').map(url => url.trim()).filter(url => url);
-      if (imageUrlsArray.length === 0) imageUrlsArray = null;
+    // Handle Image Uploads
+    const imageFiles: File[] = validatedFixedData.product_images || []; // Zod provides default empty array
+    const uploadedImageUrls: string[] = [];
+    const productSKUForPath = validatedFixedData.sku; // Use validated SKU
+
+    if (imageFiles.length > 0) {
+        for (const file of imageFiles) {
+            // Zod refinements should have caught type/size issues already.
+            // Could add a secondary check here if paranoid or if Zod checks are removed.
+            const fileExt = file.name.split('.').pop() || 'bin'; // Default extension
+            // Using a more unique name to prevent overwrites if multiple files have same timestamp (unlikely but possible)
+            const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+            // Path within the bucket, e.g., "ABC123XYZ/timestamp_random.jpg"
+            const filePath = `${productSKUForPath}/${fileName}`;
+
+            const { error: uploadError } = await locals.supabase.storage
+                .from('product-images') // Ensure this bucket exists and has RLS policies
+                .upload(filePath, file, { upsert: false }); // upsert: false because filename is unique
+
+            if (uploadError) {
+                // If one upload fails, should we rollback previous ones? Complex without transactions.
+                // For now, fail the whole operation.
+                allErrors['product_images'] = [`Failed to upload image ${file.name}: ${uploadError.message}`];
+                return fail(500, { fields: rawFormFields, errors: allErrors, message: `Failed to upload image ${file.name}.` });
+            }
+
+            const { data: publicUrlData } = locals.supabase.storage
+                .from('product-images')
+                .getPublicUrl(filePath);
+
+            if (publicUrlData) {
+                uploadedImageUrls.push(publicUrlData.publicUrl);
+            } else {
+                // Handle case where public URL is not returned, though upload was successful
+                allErrors['product_images'] = [`Failed to get public URL for ${file.name} though upload may have succeeded.`];
+                // Potentially delete the uploaded file if URL retrieval fails critically.
+                // await locals.supabase.storage.from('product-images').remove([filePath]);
+                return fail(500, { fields: rawFormFields, errors: allErrors, message: `Failed to get public URL for ${file.name}.` });
+            }
+        }
     }
 
     const productDataForDb = {
@@ -147,8 +188,8 @@ export const actions: Actions = {
       purchase_price: validatedFixedData.purchase_price,
       selling_price: validatedFixedData.selling_price,
       current_stock: validatedFixedData.current_stock,
-      image_urls: imageUrlsArray,
-      specifications: dynamicSpecifications, // Add collected dynamic specifications
+      image_urls: uploadedImageUrls.length > 0 ? uploadedImageUrls : null, // Use new URLs
+      specifications: dynamicSpecifications,
       // user_id: locals.user?.id,
     };
 

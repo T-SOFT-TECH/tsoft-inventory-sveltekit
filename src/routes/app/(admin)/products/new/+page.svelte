@@ -15,8 +15,12 @@
   let purchasePrice = $state(form?.fields?.purchase_price ?? '');
   let sellingPrice = $state(form?.fields?.selling_price ?? '');
   let currentStock = $state(form?.fields?.current_stock ?? '0');
-  let imageUrlsStr = $state(form?.fields?.image_urls ?? '');
-  let specificationsStr = $state(form?.fields?.specifications ?? ''); // Standard, non-dynamic specs
+  // let imageUrlsStr = $state(form?.fields?.image_urls_str ?? ''); // Replaced by file input
+  let specificationsStr = $state(form?.fields?.specifications_str ?? ''); // For the main JSON field, if kept
+
+  let imageFiles = $state<File[]>([]);
+  let imagePreviews = $state<string[]>([]);
+
 
   // State for dynamic category-specific fields
   type SpecField = {
@@ -80,9 +84,52 @@
   let brandIdError = $derived(form?.errors?.brand_id?.[0] ?? '');
   let sellingPriceError = $derived(form?.errors?.selling_price?.[0] ?? '');
   let currentStockError = $derived(form?.errors?.current_stock?.[0] ?? '');
-  let specificationsError = $derived(form?.errors?.specifications?.[0] ?? ''); // For the main JSON spec field
+  // let specificationsError = $derived(form?.errors?.specifications?.[0] ?? ''); // For the main JSON spec field
+  let productImagesError = $derived(form?.errors?.product_images?.[0] ?? ''); // For file input errors
 
-  let displayMessage = $derived(form?.message && !nameError && !skuError && !categoryIdError && !brandIdError && !sellingPriceError && !currentStockError && !specificationsError ? form.message : form?.errors?._general?.[0] ?? '');
+  // Adjusted displayMessage to account for new productImagesError
+  let displayMessage = $derived(form?.message && !nameError && !skuError && !categoryIdError && !brandIdError && !sellingPriceError && !currentStockError && !productImagesError /* && !specificationsError */ ? form.message : form?.errors?._general?.[0] ?? '');
+
+$effect(() => {
+    // Cleanup for imagePreviews object URLs
+    const previews = imagePreviews;
+    return () => {
+        for (const url of previews) {
+            URL.revokeObjectURL(url);
+        }
+    };
+});
+
+function handleProductImagesSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    // Revoke old previews
+    for (const url of imagePreviews) {
+        URL.revokeObjectURL(url);
+    }
+
+    if (input.files) {
+        imageFiles = Array.from(input.files);
+        imagePreviews = imageFiles.map(file => URL.createObjectURL(file));
+    } else {
+        imageFiles = [];
+        imagePreviews = [];
+    }
+}
+
+function removeSelectedImage(index: number) {
+    URL.revokeObjectURL(imagePreviews[index]);
+    imageFiles = imageFiles.filter((_, i) => i !== index);
+    imagePreviews = imagePreviews.filter((_, i) => i !== index);
+
+    // Reset the file input if all images are removed.
+    // This is tricky because input.files is a FileList and read-only.
+    // The best way is to replace the input element or reset the form.
+    // For now, clearing the arrays is the primary step. The server action will only receive remaining files.
+    const fileInput = document.getElementById('product_images') as HTMLInputElement | null;
+    if (fileInput && imageFiles.length === 0) {
+        fileInput.value = ''; // This attempts to clear the displayed file names in the input
+    }
+}
 
 </script>
 
@@ -153,17 +200,46 @@
         {#if currentStockError}<p class="mt-1 text-xs text-red-600">{currentStockError}</p>{/if}
       </div>
     </div>
+
+    {!-- Product Images File Input --}
     <div>
-      <label for="image_urls" class="block text-sm font-medium">Image URLs (comma-separated)</label>
-      <textarea name="image_urls" id="image_urls" rows="2" bind:value={imageUrlsStr} placeholder="https://ex.com/img1.jpg, https://ex.com/img2.png" class="input mt-1 block w-full"></textarea>
+      <label for="product_images" class="block text-sm font-medium text-gray-700">Product Images (Select multiple)</label>
+      <input
+          type="file"
+          name="product_images"
+          id="product_images"
+          multiple
+          accept="image/png, image/jpeg, image/gif, image/webp"
+          onchange={handleProductImagesSelect}
+          class="input mt-1 block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 {productImagesError ? 'input-error' : ''}"
+      />
+      {#if productImagesError}<p class="mt-1 text-xs text-red-600">{productImagesError}</p>{/if}
     </div>
 
-    {!-- Main JSON Specifications Textarea --}
-    <div>
-      <label for="specifications" class="block text-sm font-medium">General Specifications (JSON format)</label>
-      <textarea name="specifications" id="specifications" rows="3" bind:value={specificationsStr} placeholder='{"key": "value", "feature": "detail"}' class="input mt-1 block w-full {specificationsError ? 'input-error' : ''}"></textarea>
-      {#if specificationsError}<p class="mt-1 text-xs text-red-600">{specificationsError}</p>{/if}
-    </div>
+    {#if imagePreviews.length > 0}
+      <div class="flex flex-wrap gap-2 mt-2 p-2 border rounded-md bg-gray-50">
+        {#each imagePreviews as previewUrl, index (previewUrl)}
+          <div class="relative w-24 h-24">
+            <img src={previewUrl} alt={`Product image preview ${index + 1}`} class="w-full h-full object-cover rounded shadow" />
+            <button type="button" onclick={() => removeSelectedImage(index)}
+                    class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow hover:bg-red-700 transition-colors">
+              &times;
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    {!-- Main JSON Specifications Textarea (kept for general, non-category-specific specs if design requires) --}
+    {#if !categorySpecFields || categorySpecFields.length === 0}
+      <div>
+        <label for="specifications_str" class="block text-sm font-medium text-gray-700">General Specifications (JSON format)</label>
+        <textarea name="specifications_str" id="specifications_str" rows="3" bind:value={specificationsStr} placeholder='{"key": "value", "feature": "detail"}'
+                  class="input mt-1 block w-full {form?.errors?.specifications_str ? 'input-error' : ''}"></textarea>
+        {#if form?.errors?.specifications_str}<p class="mt-1 text-xs text-red-600">{form.errors.specifications_str[0]}</p>{/if}
+      </div>
+    {/if}
+
 
     {!-- Dynamic Category-Specific Fields --}
     {#if categorySpecFields.length > 0}

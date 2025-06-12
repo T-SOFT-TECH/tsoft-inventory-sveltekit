@@ -55,6 +55,7 @@
       <table class="min-w-full text-sm text-left text-gray-500">
         <thead class="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
+            <th scope="col" class="px-3 py-3">Image</th> {/* Adjusted padding for image column */}
             <th scope="col" class="px-6 py-3">Name</th>
             <th scope="col" class="px-6 py-3">SKU</th>
             <th scope="col" class="px-6 py-3">Category</th>
@@ -68,6 +69,13 @@
         <tbody>
           {#each products as product (product.id)}
             <tr class="bg-white border-b hover:bg-gray-50">
+              <td class="px-3 py-2"> {/* Adjusted padding */}
+                {#if product.image_urls && product.image_urls.length > 0 && product.image_urls[0]}
+                  <img src={product.image_urls[0]} alt="{product.name} thumbnail" class="w-16 h-16 object-cover rounded shadow" />
+                {:else}
+                  <div class="w-16 h-16 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400 italic">No Image</div>
+                {/if}
+              </td>
               <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{product.name}</td>
               <td class="px-6 py-4">{product.sku ?? 'N/A'}</td>
               <td class="px-6 py-4">{product.categories?.name ?? 'N/A'}</td>
