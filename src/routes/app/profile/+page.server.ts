@@ -17,6 +17,20 @@ const profileUpdateSchema = z.object({
   // Note: avatar_url is removed from schema; it's now derived from avatar_file upload
 });
 
+// Zod schema for password change
+const passwordChangeSchema = z.object({
+    currentPassword: z.string().min(1, { message: 'Current password is required.' }),
+    newPassword: z.string().min(8, { message: 'New password must be at least 8 characters long.' }),
+    confirmNewPassword: z.string().min(1, { message: 'Please confirm your new password.' })
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+    message: "New passwords don't match.",
+    path: ['confirmNewPassword'], // Error will be associated with the confirmNewPassword field
+}).refine(data => data.currentPassword !== data.newPassword, {
+    message: "New password cannot be the same as the current password.",
+    path: ['newPassword'], // Error associated with newPassword field
+});
+
+
 export const load: PageServerLoad = async ({ locals, url }) => {
   // The /app/+layout.server.ts should already protect this route and ensure locals.user exists.
   // If locals.user is somehow null here, the parent layout's redirect would have already fired.
@@ -250,31 +264,71 @@ export const actions: Actions = {
   },
 
   changePassword: async ({ request, locals }) => {
-    if (!locals.user) {
-      return fail(401, { message: 'Unauthorized' });
+    if (!locals.user || !locals.user.email) {
+      // Ensure user and email are available, as email is needed for signInWithPassword
+      return fail(401, { action: 'changePassword', message: 'Unauthorized or user email not available.' });
     }
-    // Placeholder for password change logic
-    // 1. Get formData: currentPassword, newPassword, confirmNewPassword
-    // 2. Validate:
-    //    - All fields present
-    //    - newPassword === confirmNewPassword
-    //    - newPassword meets strength requirements
-    // 3. Verify currentPassword: This is tricky with Supabase if you don't want to expose user.update directly
-    //    - One way: try `signInWithPassword` with current email and currentPassword. If it succeeds, password is correct.
-    //    - Or, if this action is primarily for users who are already logged in, Supabase recommends
-    //      `supabase.auth.updateUser({ password: newPassword })` which handles current password verification implicitly
-    //      if the user's session is fresh enough or if MFA isn't triggering re-authentication.
-    //      However, for explicit current password check, you might need a custom flow or a dedicated endpoint.
-    // 4. Update password: `await locals.supabase.auth.updateUser({ password: newPassword });`
-    // 5. Handle errors (e.g., weak password, Supabase errors)
-    // 6. On success, return { success: true, message: 'Password changed successfully!' } or redirect.
 
     const formData = await request.formData();
-    const newPassword = formData.get('new_password');
-    console.log("Attempting to change password for user:", locals.user.id, "to new password (length):", newPassword?.toString().length);
+    const rawData = Object.fromEntries(formData.entries());
 
-    return fail(501, {
-        message: `Password change for user ${locals.user.id} is not fully implemented yet.`
+    const validation = passwordChangeSchema.safeParse(rawData);
+
+    if (!validation.success) {
+      return fail(400, {
+        action: 'changePassword',
+        // Clear password fields on any error for security best practices
+        fields: { currentPassword: '', newPassword: '', confirmNewPassword: '' },
+        errors: validation.error.flatten().fieldErrors,
+        message: 'Validation failed. Please check the errors below.'
+      });
+    }
+
+    const { currentPassword, newPassword } = validation.data;
+
+    // 1. Verify current password by trying to sign in with it again.
+    // This re-authenticates the user for the sensitive operation of changing a password.
+    const { error: signInError } = await locals.supabase.auth.signInWithPassword({
+      email: locals.user.email, // Assumes email is the sign-in identifier
+      password: currentPassword
     });
+
+    if (signInError) {
+      // signInError can occur if currentPassword is wrong or other issues like user not found (though unlikely here)
+      return fail(400, {
+        action: 'changePassword',
+        fields: { currentPassword: '', newPassword: '', confirmNewPassword: '' },
+        errors: { currentPassword: ['Incorrect current password. Please try again.'] },
+        message: 'Incorrect current password.'
+      });
+    }
+
+    // 2. Update to new password
+    // `updateUser` is the correct method for an authenticated user to change their own password.
+    const { error: updateUserError } = await locals.supabase.auth.updateUser({
+      password: newPassword // The new password
+    });
+
+    if (updateUserError) {
+      // This can include errors from Supabase for weak passwords, etc.
+      return fail(500, {
+        action: 'changePassword',
+        fields: { currentPassword: '', newPassword: '', confirmNewPassword: '' },
+        // Provide a more specific error message if possible, or a general one.
+        errors: { newPassword: [updateUserError.message] },
+        message: `Failed to update password: ${updateUserError.message}`
+      });
+    }
+
+    // Password changed successfully.
+    // Supabase's `updateUser` should handle refreshing the current session with new auth tokens.
+    // Optionally, sign out from all other sessions for security:
+    // await locals.supabase.auth.signOut({ scope: 'others' });
+
+    return {
+      success: true,
+      action: 'changePassword',
+      message: 'Password changed successfully. You may need to log in again on other devices.'
+    };
   }
 };

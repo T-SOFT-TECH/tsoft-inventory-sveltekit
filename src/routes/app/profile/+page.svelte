@@ -53,14 +53,23 @@
     }
 
     // Clear form-specific messages if form indicates success (and didn't redirect)
-    if (form?.success && form.action === 'updateProfile') {
-        profileUpdateMessage = form.message || 'Profile updated successfully!'; // Default if no message
-      avatarFile = null; // Clear the file input state after successful upload
-      // invalidateAll(); // Consider invalidating to re-fetch profile from hook, which should update avatarPreviewUrl via data prop
+    // This effect also handles clearing password fields on successful password change.
+    if (form?.action === 'updateProfile') {
+        if (form.success) {
+            profileUpdateMessage = form.message || 'Profile updated successfully!';
+            avatarFile = null; // Already handled in use:enhance, but good for safety
+        } else if (form.message) { // Error message for profile update
+            profileUpdateMessage = form.message;
+        }
     }
-    if (form?.success && form.action === 'changePassword') {
-        passwordChangeMessage = form.message || 'Password changed successfully!';
-        currentPassword = ''; newPassword = ''; confirmNewPassword = ''; // Clear password fields
+    if (form?.action === 'changePassword') {
+        if (form.success) {
+            passwordChangeMessage = form.message || 'Password changed successfully!';
+            // Clearing fields is now primarily handled in use:enhance for immediate feedback
+            // currentPassword = ''; newPassword = ''; confirmNewPassword = '';
+        } else if (form.message) { // Error message for password change
+            passwordChangeMessage = form.message;
+        }
     }
   });
 
@@ -198,7 +207,27 @@ function handleFileSelect(event: Event) {
         {passwordChangeMessage}
       </div>
     {/if}
-    <form method="POST" action="?/changePassword" use:enhance class="space-y-6">
+    <form method="POST" action="?/changePassword" use:enhance={() => {
+      return async ({ result, update }) => {
+        await update(); // Update $props().form first
+
+        // Always clear password fields after an attempt for security
+        currentPassword = '';
+        newPassword = '';
+        confirmNewPassword = '';
+
+        // Messages (success or error) are handled by the $effect watching `form`
+        if (result.type === 'success' && result.data?.action === 'changePassword' && result.data?.success) {
+          // Optionally, specific client-side actions on successful password change
+          // e.g., if NOT redirecting and need to manually show extended success state.
+          // Message is already set by $effect based on form prop.
+        } else if (result.type === 'failure' || result.type === 'error') {
+          // Specific client-side error handling if needed beyond $effect.
+          // For instance, focusing on the first error field.
+          // Error messages are set by $effect based on form prop.
+        }
+      };
+    }} class="space-y-6">
       <div>
         <label for="current_password" class="block text-sm font-medium text-gray-700">Current Password</label>
         <input type="password" name="current_password" id="current_password" bind:value={currentPassword} required class="input mt-1 block w-full {form?.action==='changePassword' && form.errors?.current_password ? 'input-error' : ''}" />

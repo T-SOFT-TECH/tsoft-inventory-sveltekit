@@ -230,19 +230,47 @@ export const actions: Actions = {
             .single();
         if (custError) {
             console.error(`Error fetching customer ${customerId} for invoice snapshot: ${custError.message}`);
-            // Non-fatal for invoice, but log it. Invoice will have null customer details.
         } else if (customer) {
             customerDetailsSnapshot = customer;
         }
     }
 
-    const companyDetailsSnapshot = { // Placeholder
-        name: "T-Soft Inventory Solutions (Placeholder)",
-        address: "42 Business Rd, Commerce City, Placeholder Country",
-        phone: "+1-555-0100",
-        email: "sales@tsoft-inventory.example.com",
-        // Future: Load from a 'company_profiles' or 'settings' table
+    // Fetch company settings for the snapshot
+    let companyDetailsSnapshot: any = { // Initialize with a default structure
+        name: "Default Company - Settings Error",
+        address: "N/A",
+        email: "N/A",
+        phone: "N/A",
+        logo_url: null,
+        // Include other fields from settings that might be on an invoice
+        default_currency_symbol: '$',
+        invoice_footer_text: 'Thank you for your business!'
     };
+
+    const { data: appSettings, error: settingsError } = await locals.supabase
+        .from('settings')
+        .select('company_name, company_address, company_email, company_phone, company_logo_url, default_currency_symbol, invoice_footer_text')
+        .eq('id', 1) // Assuming settings are stored in a single row with id=1
+        .single();
+
+    if (settingsError) {
+        console.error(`CRITICAL: Could not fetch application settings during sale processing: ${settingsError.message}`);
+        // `companyDetailsSnapshot` already has fallback values.
+    } else if (appSettings) {
+        companyDetailsSnapshot = {
+            name: appSettings.company_name,
+            address: appSettings.company_address,
+            email: appSettings.company_email,
+            phone: appSettings.company_phone,
+            logo_url: appSettings.company_logo_url,
+            // Add other relevant fields that might be part of the snapshot for an invoice
+            default_currency_symbol: appSettings.default_currency_symbol,
+            invoice_footer_text: appSettings.invoice_footer_text,
+        };
+    } else {
+        console.error(`CRITICAL: Application settings row (id=1) not found during sale processing.`);
+        // `companyDetailsSnapshot` already has fallback values initialized above.
+    }
 
     const invoiceStatus = (paymentMethod === 'cash' || paymentMethod === 'card') ? 'paid' : 'unpaid';
 

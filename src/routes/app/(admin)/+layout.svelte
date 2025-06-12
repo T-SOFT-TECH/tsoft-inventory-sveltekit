@@ -22,8 +22,9 @@
       <li><a href="/app/admin/categories" class:active={$page.url.pathname.startsWith('/app/admin/categories')} class="text-blue-600 hover:underline">Manage Categories</a></li>
       <li><a href="/app/admin/brands" class:active={$page.url.pathname.startsWith('/app/admin/brands')} class="text-blue-600 hover:underline">Manage Brands</a></li>
       <li><a href="/app/admin/products" class:active={$page.url.pathname.startsWith('/app/admin/products')} class="text-blue-600 hover:underline">Manage Products</a></li>
+      <li><a href="/app/admin/settings" class:active={$page.url.pathname === '/app/admin/settings'} class="text-blue-600 hover:underline">App Settings</a></li>
       <!-- More admin links can be added here -->
-      <li><a href="/app/dashboard" class="text-gray-700 hover:underline">User Dashboard</a></li>
+      <li class="ml-auto"><a href="/app/dashboard" class="text-gray-700 hover:underline">User Dashboard</a></li> {/* Pushed to the right */}
     </ul>
   </nav>
 
