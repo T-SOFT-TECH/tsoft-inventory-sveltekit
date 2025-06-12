@@ -4,7 +4,16 @@
 
   let { data }: { data: PageData } = $props();
 
-  let invoices = $derived(data.invoices);
+  let invoices = $derived(data.invoices); // This receives the mapped invoices from load
+
+  const filterableStatuses = ['all', 'unpaid', 'paid', 'overdue', 'cancelled', 'draft', 'void'] as const;
+  let selectedStatusFilter = $state<(typeof filterableStatuses)[number]>('all');
+
+  let filteredInvoices = $derived(
+    selectedStatusFilter === 'all'
+        ? invoices
+        : invoices.filter(inv => inv.status === selectedStatusFilter)
+  );
 
   let displayMessage = $state('');
   $effect(() => {
@@ -48,12 +57,25 @@
   </div>
 
   {#if displayMessage}
-    <div class="mb-4 p-3 rounded text-sm bg-green-100 text-green-700 border border-green-200">
+    <div class="mb-4 p-3 rounded text-sm {displayMessage.toLowerCase().includes('error') || displayMessage.toLowerCase().includes('fail') ? 'bg-red-100 text-red-700 border-red-200' : 'bg-green-100 text-green-700 border-green-200'} border">
       {displayMessage}
     </div>
   {/if}
 
-  {#if invoices && invoices.length > 0}
+  <div class="mb-4 flex items-center space-x-2">
+    <label for="status-filter" class="label text-sm font-medium">Filter by status:</label>
+    <select id="status-filter" bind:value={selectedStatusFilter} class="select select-bordered select-sm">
+        {#each filterableStatuses as status}
+            <option value={status} class="capitalize">{status.charAt(0).toUpperCase() + status.slice(1)}</option>
+        {/each}
+    </select>
+  </div>
+
+  {#if invoices && invoices.length === 0}
+     <p class="text-center text-gray-500 py-8">No invoices found yet. <a href="/app/pos" class="link">Create one!</a></p>
+  {:else if filteredInvoices && filteredInvoices.length === 0}
+     <p class="text-center text-gray-500 py-8">No invoices match the filter "{selectedStatusFilter}".</p>
+  {:else if filteredInvoices && filteredInvoices.length > 0}
     <div class="overflow-x-auto shadow-md sm:rounded-lg">
       <table class="min-w-full text-sm text-left text-gray-500">
         <thead class="text-xs text-gray-700 uppercase bg-gray-50">
@@ -67,7 +89,7 @@
           </tr>
         </thead>
         <tbody>
-          {#each invoices as invoice (invoice.id)}
+          {#each filteredInvoices as invoice (invoice.id)}
             <tr class="bg-white border-b hover:bg-gray-50">
               <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
                 <a href={`/app/invoices/${invoice.id}`} class="text-blue-600 hover:underline">
@@ -78,35 +100,51 @@
               <td class="px-6 py-4">{formatDate(invoice.issue_date)}</td>
               <td class="px-6 py-4 text-right">${formatCurrency(invoice.finalAmount)}</td>
               <td class="px-6 py-4">
-                <span class="font-semibold px-2 py-0.5 rounded-full text-xs"
+                <span class="font-semibold px-2 py-0.5 rounded-full text-xs capitalize"
                       class:text-green-800={invoice.status === 'paid'} class:bg-green-200={invoice.status === 'paid'}
-                      class:text-red-800={invoice.status === 'unpaid' || invoice.status === 'overdue'} class:bg-red-200={invoice.status === 'unpaid' || invoice.status === 'overdue'}
-                      class:text-yellow-800={invoice.status === 'pending'} class:bg-yellow-200={invoice.status === 'pending'}
-                      class:text-gray-800={!['paid', 'unpaid', 'overdue', 'pending'].includes(invoice.status ?? '')}
-                      class:bg-gray-200={!['paid', 'unpaid', 'overdue', 'pending'].includes(invoice.status ?? '')}
-                >{invoice.status?.toUpperCase() ?? 'N/A'}</span>
+                      class:text-red-800={invoice.status === 'unpaid' || invoice.status === 'overdue' || invoice.status === 'cancelled'}
+                      class:bg-red-200={invoice.status === 'unpaid' || invoice.status === 'overdue' || invoice.status === 'cancelled'}
+                      class:text-yellow-800={invoice.status === 'pending' || invoice.status === 'draft'}
+                      class:bg-yellow-200={invoice.status === 'pending' || invoice.status === 'draft'}
+                      class:text-gray-800={invoice.status === 'void' || !filterableStatuses.includes(invoice.status ?? '')}
+                      class:bg-gray-200={invoice.status === 'void' || !filterableStatuses.includes(invoice.status ?? '')}
+                >{invoice.status ?? 'N/A'}</span>
               </td>
-              <td class="px-6 py-4">
-                <a href={`/app/invoices/${invoice.id}`} role="button" class="text-blue-600 hover:text-blue-800 font-medium">View</a>
-                <!-- Add other actions like "Download PDF" or "Mark as Paid" later -->
+              <td class="px-6 py-4 space-x-2 whitespace-nowrap">
+                <a href={`/app/invoices/${invoice.id}`} role="button" class="text-blue-600 hover:text-blue-800 font-medium">View Details</a>
+                {#if invoice.pdf_url}
+                    <a href={invoice.pdf_url} target="_blank" rel="noopener noreferrer" title="View PDF" class="text-purple-600 hover:text-purple-800 font-medium">
+                        View PDF
+                    </a>
+                {:else}
+                    <span class="text-gray-400 text-xs">(No PDF)</span>
+                {/if}
               </td>
             </tr>
           {/each}
         </tbody>
       </table>
     </div>
-  {:else}
-    <p class="text-center text-gray-500 py-8">No invoices found.</p>
+  {:else} <!-- This case should ideally be covered by the specific filtered/non-filtered messages above -->
+    <p class="text-center text-gray-500 py-8">Loading invoices or an unexpected state occurred.</p>
   {/if}
 </div>
 
 <style>
   /* Basic styles - assuming Tailwind handles most. */
+  .label { display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.25rem;}
+  .select { border-color: #D1D5DB; padding: 0.5rem 0.75rem; border-radius: 0.375rem; }
+  .select-sm { font-size: 0.875rem; padding-top: 0.25rem; padding-bottom: 0.25rem; padding-right: 2rem; /* Space for arrow */ }
+  .select-bordered { border-width: 1px; }
+  .capitalize { text-transform: capitalize; }
+  .link { color: #2563eb; text-decoration: underline; }
+  .link:hover { color: #1d4ed8; }
+
   .btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; text-decoration: none; display: inline-block; text-align: center; border-width: 1px; border-style: solid; cursor: pointer; }
   .btn-primary { background-color: #4F46E5; color: white; border-color: transparent; }
   .btn-primary:hover { background-color: #4338CA; }
 
-  /* Tailwind placeholder classes (actual Tailwind setup would handle these) */
+  /* Tailwind placeholder classes from previous files */
   .container { max-width: 1280px; } .mx-auto { margin-left: auto; margin-right: auto; } .p-4 { padding: 1rem; }
   .mb-6 { margin-bottom: 1.5rem; } .mb-4 { margin-bottom: 1rem; }
   .flex { display: flex; } .justify-between { justify-content: space-between; } .items-center { align-items: center; }

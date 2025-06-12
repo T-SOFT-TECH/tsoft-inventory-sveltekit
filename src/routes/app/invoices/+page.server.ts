@@ -15,9 +15,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       invoice_number,
       issue_date,
       status,
-      sale_id, /* Needed for the join condition with sales if done manually or for reference */
+      pdf_url, // <<< ADDED pdf_url HERE
+      sale_id,
       sales (
-        id, /* sales.id */
+        id,
         final_amount,
         user_id, /* The user_id from the sales table */
         customers ( id, name ) /* customers.name, customers.id */
@@ -64,6 +65,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         // If `inv.sales` could be an array (less likely for FK join if `invoices.sale_id` is unique)
         // customerName: Array.isArray(inv.sales) && inv.sales.length > 0 ? inv.sales[0].customers?.name ?? 'N/A' : 'N/A',
         // finalAmount: Array.isArray(inv.sales) && inv.sales.length > 0 ? inv.sales[0].final_amount : undefined,
+        pdf_url: inv.pdf_url // Ensure pdf_url is explicitly passed through if map is used
     })) ?? []
   };
 };

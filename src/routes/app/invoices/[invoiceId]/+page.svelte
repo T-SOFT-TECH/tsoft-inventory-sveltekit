@@ -1,8 +1,10 @@
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData, ActionData } from './$types'; // Added ActionData
   import { page } from '$app/stores'; // For URL message if needed
+  import { enhance } from '$app/forms'; // Added enhance
+  import { invalidateAll } from '$app/navigation'; // Added invalidateAll
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData, form?: ActionData } = $props(); // Added form
 
   let invoice = $derived(data.invoice);
   let items = $derived(data.items);
@@ -20,13 +22,38 @@
 
   let companyDetails = $derived(invoice.company_details_snapshot);
 
-  // For messages from redirects (e.g., after sale creation)
+  // For messages from redirects (e.g., after sale creation) or form actions
   let displayMessage = $state('');
+  let generatingPdf = $state(false);
+  let selectedStatus = $state(invoice?.status ?? 'unpaid'); // Initialize with current status
+
+  const allowedStatuses = ['unpaid', 'paid', 'overdue', 'cancelled', 'draft', 'void'] as const;
+
   $effect(() => {
+    let messageToShow = '';
     const urlMessage = new URL($page.url).searchParams.get('message');
     if (urlMessage) {
-      displayMessage = urlMessage;
+      messageToShow = urlMessage;
     }
+
+    if (form?.message) {
+        // Prioritize action message if it exists
+        messageToShow = form.message; // This will be set by any action, including sendInvoiceEmail
+    }
+
+    displayMessage = messageToShow;
+
+    // Update selectedStatus if data.invoice.status changes due to invalidateAll
+    if (invoice?.status !== selectedStatus && form?.action !== 'updateStatus') { // Avoid loop if updateStatus just ran
+      selectedStatus = invoice?.status ?? 'unpaid';
+    }
+
+    // No specific logic needed here for 'sendInvoiceEmail' success beyond message display,
+    // as it doesn't change the page data that would require invalidateAll (unless we logged the send).
+  });
+
+  function formatDate(dateString: string | null | undefined): string {
+    // which will update the `invoice.pdf_url` and show the "View PDF" button.
   });
 
   function formatDate(dateString: string | null | undefined): string {
@@ -178,19 +205,114 @@
   {/if}
 
   <!-- Footer / Actions -->
-  <footer class="invoice-footer mt-10 pt-6 border-t text-center print-hide">
-    <p class="text-sm text-gray-600 mb-4">Thank you for your business!</p>
-    <button type="button" onclick={() => window.print()}
-            class="btn btn-primary py-2 px-4 mr-2">
-      Print Invoice
-    </button>
-    <a href="/app/invoices" role="button" class="btn btn-secondary py-2 px-4">
-      Back to Invoices List
-    </a>
-     <a href="/app/pos" role="button" class="btn btn-outline ml-2 py-2 px-4">
-      New Sale (POS)
-    </a>
+  <footer class="invoice-footer mt-10 pt-6 border-t text-center print-hide space-y-2 md:space-y-0 md:space-x-2">
+    <div class="mb-4">
+      <p class="text-sm text-gray-600 mb-2">Thank you for your business!</p>
+      <button type="button" onclick={() => window.print()} class="btn btn-primary py-2 px-4">
+        Print Invoice
+      </button>
+
+      {#if invoice.pdf_url}
+        <a href={invoice.pdf_url} target="_blank" rel="noopener noreferrer" role="button" class="btn btn-secondary py-2 px-4">View PDF</a>
+        <form method="POST" action="?/generatePdf" use:enhance={() => {
+            generatingPdf = true;
+            return async ({ result, update }) => {
+                generatingPdf = false;
+                await update();
+                if (result.type === 'success' && result.data?.success) {
+                    await invalidateAll();
+                }
+            };
+        }} class="inline-block">
+            <button type="submit" class="btn btn-outline py-2 px-4" disabled={generatingPdf}>
+                {generatingPdf ? 'Re-generating...' : 'Re-generate PDF'}
+            </button>
+        </form>
+      {:else}
+        <form method="POST" action="?/generatePdf" use:enhance={() => {
+            generatingPdf = true;
+            return async ({ result, update }) => {
+                generatingPdf = false;
+                await update();
+                if (result.type === 'success' && result.data?.success) {
+                    await invalidateAll();
+                }
+            };
+        }} class="inline-block">
+            <button type="submit" class="btn btn-primary-outline py-2 px-4" disabled={generatingPdf}>
+                {generatingPdf ? 'Generating...' : 'Generate PDF & Save Link'}
+            </button>
+        </form>
+      {/if}
+      <form method="POST" action="?/sendInvoiceEmail" use:enhance={() => {
+          // Optional: add a sendingEmail $state if more complex UI feedback is needed
+          return async ({ result, update }) => {
+              await update(); // Update $props.form for message display
+              // Success/error messages handled by the main displayMessage $effect
+              // No invalidateAll needed as sending email doesn't change invoice data itself
+          };
+      }} class="inline-block">
+          <button
+              type="submit"
+              class="btn btn-info ml-2 py-2 px-4"
+              disabled={!invoice.pdf_url || !(customerDisplay?.email)}
+              title={
+                  !invoice.pdf_url ? "Generate PDF first to enable sending." :
+                  !(customerDisplay?.email) ? "No customer email available to send." :
+                  "Send invoice email (simulated)"
+              }
+          >
+              Send Email (Simulated)
+          </button>
+      </form>
+    </div>
+
+    <div class="mt-4 pt-4 border-t border-gray-200">
+        <h3 class="text-md font-medium text-gray-700 mb-2">Update Invoice Status</h3>
+        <form method="POST" action="?/updateStatus" use:enhance={() => {
+            return async ({ result, update }) => {
+                await update();
+                if (result.type === 'success' && result.data?.success) {
+                    await invalidateAll();
+                }
+            };
+        }} class="flex items-center justify-center space-x-2">
+            <label for="status-select" class="label sr-only">New Status</label>
+            <input type="hidden" name="current_invoice_status" value={invoice.status} />
+            <select name="status" id="status-select" bind:value={selectedStatus} class="select select-bordered select-sm">
+                {#each allowedStatuses as statusValue (statusValue)}
+                    <option value={statusValue} class="capitalize">{statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}</option>
+                {/each}
+            </select>
+            <button type="submit" class="btn btn-primary btn-sm" disabled={selectedStatus === invoice.status}>
+                Update Status
+            </button>
+        </form>
+        {#if form?.action === 'updateStatus' && form?.message && form?.success === false}
+             <p class="error-message text-red-500 mt-2 text-xs">{form.message}</p>
+        {/if}
+        {#if form?.action === 'updateStatus' && form?.errors?.status}
+             <p class="error-message text-red-500 mt-2 text-xs">{form.errors.status[0]}</p>
+        {/if}
+    </div>
+
+    <div class="mt-6">
+      <a href="/app/invoices" role="button" class="btn btn-secondary py-2 px-4">
+        Back to Invoices List
+      </a>
+      <a href="/app/pos" role="button" class="btn btn-outline ml-2 py-2 px-4">
+        New Sale (POS)
+      </a>
+    </div>
   </footer>
+
+  {#if form?.action === 'generatePdf' && form?.message && form?.success === false}
+    <p class="error-message text-red-500 mt-2 text-center">{form.message}</p>
+  {/if}
+  {#if form?.action === 'sendInvoiceEmail' && form?.message && form?.success === false}
+    <p class="error-message text-red-500 mt-2 text-center">{form.message}</p>
+  {/if}
+
 </div>
 
 <style>
@@ -199,11 +321,14 @@
   .btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; text-decoration: none; display: inline-block; text-align: center; border-width: 1px; border-style: solid; cursor: pointer; }
   .btn-primary { background-color: #4F46E5; color: white; border-color: transparent; }
   .btn-primary:hover { background-color: #4338CA; }
-  .btn-secondary { background-color: #6B7280; color: white; border-color: transparent; } /* Tailwind gray-600 */
-  .btn-secondary:hover { background-color: #4B5563; } /* Tailwind gray-700 */
-  .btn-outline { background-color: transparent; color: #4F46E5; border-color: #4F46E5; }
-  .btn-outline:hover { background-color: #4F46E5; color: white; }
+  .btn-secondary { background-color: #6B7280; color: white; border-color: transparent; }
+  .btn-secondary:hover { background-color: #4B5563; }
+  .btn-outline { background-color: transparent; color: #6366F1; border-color: #6366F1; } /* Using indigo for outline */
+  .btn-outline:hover { background-color: #6366F1; color: white; }
+  .btn-primary-outline { background-color: transparent; color: #4F46E5; border-color: #4F46E5; } /* Original primary color for outline */
+  .btn-primary-outline:hover { background-color: #4F46E5; color: white; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+  .inline-block { display: inline-block; }
 
   @media print {
     .print-hide { display: none; }
